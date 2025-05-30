@@ -1,0 +1,54 @@
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# User-specific files
+*.log
+*.class
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Compiled files
+target/
+bin/
+build/
+
+# Maven
+log/
+dependency-reduced-pom.xml
+release.properties
+
+# Gradle (if added later)
+.gradle/
+build/
+!gradle-wrapper.jar
+
+# VS Code (if someone uses it)
+.vscode/
+
+# OS-generated files
+ehthumbs.db
+Icon?
+Desktop.ini
+
+# JetBrains Rider
+.idea/
+*.sln
+*.user
+*.suo
+
+# Test reports
+surefire-reports/
+test-output/
+
+# Logs
+*.log
+
+# Java crash logs
+hs_err_pid*
+replay_pid*
