@@ -21,6 +21,7 @@
     <mockito.version>4.11.0</mockito.version>
     <junit5.version>5.9.1</junit5.version>
     <hazelcast.version>3.8.6</hazelcast.version>
+    <lombok>1.18.36</lombok>
   </properties>
   <dependencyManagement>
     <dependencies>
@@ -62,6 +63,12 @@
       <artifactId>jcl-over-slf4j</artifactId>
       <version>${slf4j.version}</version>
       <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <version>${lombok}</version>
+      <scope>provided</scope>
     </dependency>
     <!-- BEGIN: TEST -->
     <dependency>

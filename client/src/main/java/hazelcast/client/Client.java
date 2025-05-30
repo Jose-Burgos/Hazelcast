@@ -1,14 +1,98 @@
 package hazelcast.client;
 
+import com.hazelcast.client.HazelcastClient;
+import com.hazelcast.client.config.ClientConfig;
+import com.hazelcast.client.config.ClientNetworkConfig;
+import com.hazelcast.config.GroupConfig;
+import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.core.IMap;
+import hazelcast.model.Complaint;
+import hazelcast.model.ComplaintType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.concurrent.TimeUnit;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.stream.Stream;
 
-public class Client {
-    private static Logger logger = LoggerFactory.getLogger(Client.class);
+public abstract class Client {
+    protected final Logger logger = LoggerFactory.getLogger(this.getClass());
+    protected HazelcastInstance client;
+    protected IMap<String, ComplaintType> typeMap;
+    protected IMap<String, Complaint> complaintMap;
+    protected Set<String> validTypes;
+    protected String addresses;
+    protected String city;
+    protected String inPath;
+    protected String outPath;
 
-    public static void main(String[] args) throws InterruptedException {
-        logger.info("tpe2-g12 Client Starting ...");
+    protected long startRead;
+    protected long endRead;
+
+    public void init() throws IOException {
+        addresses = System.getProperty("addresses");
+        city = System.getProperty("city").toUpperCase();
+        inPath = System.getProperty("inPath");
+        outPath = System.getProperty("outPath");
+
+        if (addresses == null || city == null || inPath == null || outPath == null) {
+            throw new IllegalArgumentException("Missing parameters: -Daddresses, -Dcity, -DinPath, -DoutPath");
+        }
+
+        ClientConfig clientConfig = new ClientConfig();
+        ClientNetworkConfig clientNetworkConfig = clientConfig.getNetworkConfig();
+        GroupConfig groupConfig = new GroupConfig("l12345", "l12345-pass");
+        clientConfig.setGroupConfig(groupConfig);
+        Arrays.stream(addresses.split(";")).forEach(clientNetworkConfig::addAddress);
+        client = HazelcastClient.newHazelcastClient(clientConfig);
+
+        String typesFile = Paths.get(inPath, "serviceTypes" + city + ".csv").toString();
+        String complaintsFile = Paths.get(inPath, "serviceRequests" + city + ".csv").toString();
+
+        typeMap = client.getMap("complaintTypes");
+        try (Stream<String> lines = Files.lines(Paths.get(typesFile), StandardCharsets.UTF_8)) {
+            lines.skip(1)
+                    .map(ComplaintType::fromEntry)
+                    .forEach(ct -> typeMap.put(ct.getType(), ct));
+        }
+        validTypes = new HashSet<>(typeMap.keySet());
+        logger.info("Loaded {} valid complaint types from {}", validTypes.size(), typesFile);
+
+        logger.info("Starting to read complaints from: {}", complaintsFile);
+        startRead = System.nanoTime();
+
+        complaintMap = client.getMap("complaints");
+        final int[] idGen = {0};
+        try (Stream<String> lines = Files.lines(Paths.get(complaintsFile), StandardCharsets.UTF_8)) {
+            lines.skip(1)
+                    .map(Complaint::fromEntry)
+                    .filter(Objects::nonNull)
+                    .forEach(c -> complaintMap.put(String.valueOf(idGen[0]++), c));
+        }
+
+        endRead = System.nanoTime();
+        logger.info("Finished reading complaints. Duration: {} ms", (endRead - startRead) / 1_000_000);
+    }
+
+    public abstract void runQuery() throws Exception;
+
+    public void shutdown() {
+        if (client != null) {
+            HazelcastClient.shutdownAll();
+        }
+    }
+
+    protected String formatTimestamp() {
+        return LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss:SSSS"));
+    }
+
+    protected void writeTimeLog(List<String> logs) throws IOException {
+        Files.write(Paths.get(outPath + "/time1.txt"), logs, StandardCharsets.UTF_8);
     }
 }
+

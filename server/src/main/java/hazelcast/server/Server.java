@@ -28,12 +28,6 @@ public class Server {
 
         config.setNetworkConfig(networkConfig);
 
-//        java.util.logging.Logger rootLogger = LogManager.getLogManager().getLogger("");
-//        rootLogger.setLevel(Level.FINE);
-//        for (Handler h : rootLogger.getHandlers()) {
-//            h.setLevel(Level.FINE);
-//        }
-
         Hazelcast.newHazelcastInstance(config);
     }
 }
