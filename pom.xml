@@ -22,6 +22,7 @@
     <junit5.version>5.9.1</junit5.version>
     <hazelcast.version>3.8.6</hazelcast.version>
     <lombok>1.18.36</lombok>
+    <opencsv.version>5.9</opencsv.version>
   </properties>
   <dependencyManagement>
     <dependencies>
@@ -69,6 +70,11 @@
       <artifactId>lombok</artifactId>
       <version>${lombok}</version>
       <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.opencsv</groupId>
+      <artifactId>opencsv</artifactId>
+      <version>${opencsv.version}</version>
     </dependency>
     <!-- BEGIN: TEST -->
     <dependency>

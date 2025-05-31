@@ -6,6 +6,10 @@ import com.hazelcast.client.config.ClientNetworkConfig;
 import com.hazelcast.config.GroupConfig;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IMap;
+import com.opencsv.CSVParserBuilder;
+import com.opencsv.CSVReader;
+import com.opencsv.CSVReaderBuilder;
+import com.opencsv.exceptions.CsvValidationException;
 import hazelcast.model.Complaint;
 import hazelcast.model.ComplaintType;
 import org.slf4j.Logger;
@@ -18,7 +22,6 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.stream.Stream;
 
 public abstract class Client {
     protected final Logger logger = LoggerFactory.getLogger(this.getClass());
@@ -34,7 +37,7 @@ public abstract class Client {
     protected long startRead;
     protected long endRead;
 
-    public void init() throws IOException {
+    public void init() throws IOException, CsvValidationException {
         addresses = System.getProperty("addresses");
         city = System.getProperty("city").toUpperCase();
         inPath = System.getProperty("inPath");
@@ -55,10 +58,17 @@ public abstract class Client {
         String complaintsFile = Paths.get(inPath, "serviceRequests" + city + ".csv").toString();
 
         typeMap = client.getMap("complaintTypes");
-        try (Stream<String> lines = Files.lines(Paths.get(typesFile), StandardCharsets.UTF_8)) {
-            lines.skip(1)
-                    .map(ComplaintType::fromEntry)
-                    .forEach(ct -> typeMap.put(ct.getType(), ct));
+        try (CSVReader reader = new CSVReaderBuilder(Files.newBufferedReader(Paths.get(typesFile), StandardCharsets.UTF_8))
+                .withCSVParser(new CSVParserBuilder().withSeparator(';').build())
+                .withSkipLines(1)
+                .build()) {
+            String[] parts;
+            while ((parts = reader.readNext()) != null) {
+                ComplaintType ct = ComplaintType.fromParts(parts);
+                if (ct != null) {
+                    typeMap.put(ct.getType(), ct);
+                }
+            }
         }
         validTypes = new HashSet<>(typeMap.keySet());
         logger.info("Loaded {} valid complaint types from {}", validTypes.size(), typesFile);
@@ -67,12 +77,18 @@ public abstract class Client {
         startRead = System.nanoTime();
 
         complaintMap = client.getMap("complaints");
-        final int[] idGen = {0};
-        try (Stream<String> lines = Files.lines(Paths.get(complaintsFile), StandardCharsets.UTF_8)) {
-            lines.skip(1)
-                    .map(Complaint::fromEntry)
-                    .filter(Objects::nonNull)
-                    .forEach(c -> complaintMap.put(String.valueOf(idGen[0]++), c));
+        int id = 0;
+        try (CSVReader reader = new CSVReaderBuilder(Files.newBufferedReader(Paths.get(complaintsFile), StandardCharsets.UTF_8))
+                .withCSVParser(new CSVParserBuilder().withSeparator(';').build())
+                .withSkipLines(1)
+                .build()) {
+            String[] parts;
+            while ((parts = reader.readNext()) != null) {
+                Complaint complaint = Complaint.fromParts(parts);
+                if (complaint != null) {
+                    complaintMap.put(String.valueOf(id++), complaint);
+                }
+            }
         }
 
         endRead = System.nanoTime();
@@ -91,8 +107,8 @@ public abstract class Client {
         return LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss:SSSS"));
     }
 
-    protected void writeTimeLog(List<String> logs) throws IOException {
-        Files.write(Paths.get(outPath + "/time1.txt"), logs, StandardCharsets.UTF_8);
+    protected void writeTimeLog(String queryName, List<String> logs) throws IOException {
+        String filename = Paths.get(outPath, "time_" + queryName + city + ".txt").toString();
+        Files.write(Paths.get(filename), logs, StandardCharsets.UTF_8);
     }
 }
-

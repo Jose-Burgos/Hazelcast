@@ -5,12 +5,16 @@ import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.DataSerializable;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 import java.io.IOException;
+import java.util.Arrays;
 
 @Getter
+@Setter
 @NoArgsConstructor
 public class Complaint implements DataSerializable {
+    private String id;
     private String agency;
     private String type;
     private String status;
@@ -22,6 +26,7 @@ public class Complaint implements DataSerializable {
 
     @Override
     public void writeData(ObjectDataOutput out) throws IOException {
+        out.writeUTF(id);
         out.writeUTF(agency);
         out.writeUTF(type);
         out.writeUTF(status);
@@ -34,6 +39,7 @@ public class Complaint implements DataSerializable {
 
     @Override
     public void readData(ObjectDataInput in) throws IOException {
+        id = in.readUTF();
         agency = in.readUTF();
         type = in.readUTF();
         status = in.readUTF();
@@ -44,36 +50,31 @@ public class Complaint implements DataSerializable {
         street = in.readUTF();
     }
 
-    public static Complaint fromEntry(String line) {
-        String[] parts = line.split(";", 0);
+    public static Complaint fromParts(String[] parts) {
         Complaint complaint = new Complaint();
 
         if (parts.length == 9) {
-            complaint.agency = parts[2];
-            complaint.type = parts[3];
-            complaint.status = parts[5];
-            complaint.createdDate = parts[1];
-            complaint.borough = parts[6];
-            complaint.latitude = parseDoubleSafe(parts[7]);
-            complaint.longitude = parseDoubleSafe(parts[8]);
-            complaint.street = parts[4];
-
-        } else if (parts.length == 13) {
-            complaint.agency = parts[3];
-            complaint.type = parts[2];
-            complaint.status = parts[4];
-            complaint.createdDate = parts[5];
-            complaint.borough = parts[10];
-            complaint.latitude = parseDoubleSafe(parts[11]);
-            complaint.longitude = parseDoubleSafe(parts[12]);
-
-            String streetDirection = parts[7];
-            String streetName = parts[8];
-            String streetType = parts[9];
-            complaint.street = String.format("%s %s %s", streetDirection, streetName, streetType);
-
+            complaint.setId(parts[0]);
+            complaint.setAgency(parts[2]);
+            complaint.setType(parts[3]);
+            complaint.setStatus(parts[5]);
+            complaint.setCreatedDate(parts[1]);
+            complaint.setBorough(parts[6]);
+            complaint.setLatitude(parseDoubleSafe(parts[7]));
+            complaint.setLongitude(parseDoubleSafe(parts[8]));
+            complaint.setStreet(parts[4]);
+        } else if (parts.length == 12) {
+            complaint.setId(parts[0]);
+            complaint.setAgency(parts[2]);
+            complaint.setType(parts[1]);
+            complaint.setStatus(parts[3]);
+            complaint.setCreatedDate(parts[4]);
+            complaint.setBorough(parts[9]);
+            complaint.setLatitude(parseDoubleSafe(parts[10]));
+            complaint.setLongitude(parseDoubleSafe(parts[11]));
+            complaint.setStreet(String.format("%s %s %s %s", parts[5], parts[6], parts[7], parts[8]));
         } else {
-            System.err.println("Unknown format: " + line);
+            System.err.println("Unknown format, skipping: " + Arrays.toString(parts));
             return null;
         }
 

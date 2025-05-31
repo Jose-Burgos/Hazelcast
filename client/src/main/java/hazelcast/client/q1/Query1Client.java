@@ -1,4 +1,5 @@
 package hazelcast.client.q1;
+
 import com.hazelcast.mapreduce.JobTracker;
 import com.hazelcast.mapreduce.KeyValueSource;
 import hazelcast.client.Client;
@@ -6,6 +7,7 @@ import hazelcast.mapreduce.Query1Mapper;
 import hazelcast.mapreduce.Query1Reducer;
 import hazelcast.model.Complaint;
 import hazelcast.utils.Pair;
+
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -54,7 +56,7 @@ public class Query1Client extends Client {
                     entry.getKey().getSecond() + ";" +
                     entry.getValue());
         }
-        Files.write(Paths.get(outPath + "/query1.csv"), outputLines, StandardCharsets.UTF_8);
+        Files.write(Paths.get(outPath, "query1_" + city + ".csv"), outputLines, StandardCharsets.UTF_8);
 
         List<String> timeLog = Arrays.asList(
                 formatTimestamp() + " INFO [main] Started reading complaints",
@@ -62,7 +64,7 @@ public class Query1Client extends Client {
                 formatTimestamp() + " INFO [main] Started MapReduce job",
                 formatTimestamp() + " INFO [main] Finished MapReduce job. Duration: " + (endMapReduce - startMapReduce) / 1_000_000 + " ms"
         );
-        writeTimeLog(timeLog);
+        writeTimeLog("query1", timeLog);
 
         logger.info("Query1 completed successfully!");
     }
