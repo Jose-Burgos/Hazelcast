@@ -3,10 +3,11 @@ package hazelcast.client.q3;
 import com.hazelcast.mapreduce.JobTracker;
 import com.hazelcast.mapreduce.KeyValueSource;
 import hazelcast.client.Client;
+import hazelcast.mapreduce.Query3Collator;
 import hazelcast.mapreduce.Query3Mapper;
 import hazelcast.mapreduce.Query3Reducer;
-import hazelcast.model.Complaint;
 import hazelcast.utils.Pair;
+import hazelcast.model.Complaint;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -17,6 +18,8 @@ import java.util.*;
 
 @SuppressWarnings("deprecation")
 public class Query3Client extends Client {
+    private static final boolean USE_COLLATOR = true;
+
     public static void main(String[] args) throws Exception {
         Query3Client client = new Query3Client();
         try {
@@ -36,17 +39,36 @@ public class Query3Client extends Client {
         JobTracker jobTracker = client.getJobTracker("query3-job-tracker");
         KeyValueSource<String, Complaint> kvSource = KeyValueSource.fromMap(complaintMap);
 
-        Map<Pair<String, Pair<Integer, Integer>>, Long> result = jobTracker.newJob(kvSource)
-                .mapper(new Query3Mapper(validTypes, city))
-                .reducer(new Query3Reducer())
-                .submit()
-                .get();
+        List<Map.Entry<Pair<String, Pair<Integer, Integer>>, Long>> sorted;
+
+        if (USE_COLLATOR) {
+            logger.info("Using Collator for ordering...");
+            sorted = jobTracker.newJob(kvSource)
+                    .mapper(new Query3Mapper(validTypes, city))
+                    .reducer(new Query3Reducer())
+                    .submit(new Query3Collator())
+                    .get();
+        } else {
+            logger.info("No Collator. Sorting in client...");
+            Map<Pair<String, Pair<Integer, Integer>>, Long> result = jobTracker.newJob(kvSource)
+                    .mapper(new Query3Mapper(validTypes, city))
+                    .reducer(new Query3Reducer())
+                    .submit()
+                    .get();
+
+            sorted = result.entrySet().stream()
+                    .sorted(Comparator
+                            .comparing((Map.Entry<Pair<String, Pair<Integer, Integer>>, Long> e) -> e.getKey().getFirst())
+                            .thenComparing(e -> e.getKey().getSecond().getFirst())
+                            .thenComparing(e -> e.getKey().getSecond().getSecond()))
+                    .toList();
+        }
 
         long endMapReduce = System.nanoTime();
         logger.info("MapReduce job finished. Duration: {} ms", (endMapReduce - startMapReduce) / 1_000_000);
 
         Map<String, Map<Integer, TreeMap<Integer, Long>>> grouped = new TreeMap<>();
-        for (var entry : result.entrySet()) {
+        for (var entry : sorted) {
             String agency = entry.getKey().getFirst();
             int year = entry.getKey().getSecond().getFirst();
             int month = entry.getKey().getSecond().getSecond();

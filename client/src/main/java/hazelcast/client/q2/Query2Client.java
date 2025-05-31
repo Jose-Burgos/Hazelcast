@@ -3,10 +3,11 @@ package hazelcast.client.q2;
 import com.hazelcast.mapreduce.JobTracker;
 import com.hazelcast.mapreduce.KeyValueSource;
 import hazelcast.client.Client;
+import hazelcast.mapreduce.Query2Collator;
 import hazelcast.mapreduce.Query2Mapper;
 import hazelcast.mapreduce.Query2Reducer;
-import hazelcast.model.Complaint;
 import hazelcast.utils.Pair;
+import hazelcast.model.Complaint;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -15,6 +16,8 @@ import java.util.*;
 
 @SuppressWarnings("deprecation")
 public class Query2Client extends Client {
+    private static final boolean USE_COLLATOR = true;
+
     public static void main(String[] args) throws Exception {
         Query2Client client = new Query2Client();
         try {
@@ -34,21 +37,33 @@ public class Query2Client extends Client {
         JobTracker jobTracker = client.getJobTracker("query2-job-tracker");
         KeyValueSource<String, Complaint> kvSource = KeyValueSource.fromMap(complaintMap);
 
-        Map<Pair<String, Pair<Integer, Integer>>, String> result = jobTracker.newJob(kvSource)
-                .mapper(new Query2Mapper(validTypes, q))
-                .reducer(new Query2Reducer())
-                .submit()
-                .get();
+        List<Map.Entry<Pair<String, Pair<Integer, Integer>>, String>> sorted;
+
+        if (USE_COLLATOR) {
+            logger.info("Using Collator for ordering...");
+            sorted = jobTracker.newJob(kvSource)
+                    .mapper(new Query2Mapper(validTypes, q))
+                    .reducer(new Query2Reducer())
+                    .submit(new Query2Collator())
+                    .get();
+        } else {
+            logger.info("No Collator. Sorting in client...");
+            Map<Pair<String, Pair<Integer, Integer>>, String> result = jobTracker.newJob(kvSource)
+                    .mapper(new Query2Mapper(validTypes, q))
+                    .reducer(new Query2Reducer())
+                    .submit()
+                    .get();
+
+            sorted = result.entrySet().stream()
+                    .sorted(Comparator
+                            .comparing((Map.Entry<Pair<String, Pair<Integer, Integer>>, String> e) -> e.getKey().getFirst())
+                            .thenComparing(e -> e.getKey().getSecond().getFirst())
+                            .thenComparing(e -> e.getKey().getSecond().getSecond()))
+                    .toList();
+        }
 
         long endMapReduce = System.nanoTime();
         logger.info("MapReduce job finished. Duration: {} ms", (endMapReduce - startMapReduce) / 1_000_000);
-
-        List<Map.Entry<Pair<String, Pair<Integer, Integer>>, String>> sorted = result.entrySet().stream()
-                .sorted(Comparator
-                        .comparing((Map.Entry<Pair<String, Pair<Integer, Integer>>, String> e) -> e.getKey().getFirst())
-                        .thenComparing(e -> e.getKey().getSecond().getFirst())
-                        .thenComparing(e -> e.getKey().getSecond().getSecond()))
-                .toList();
 
         List<String> outputLines = new ArrayList<>();
         outputLines.add("barrio;lat_cell;lon_cell;type");

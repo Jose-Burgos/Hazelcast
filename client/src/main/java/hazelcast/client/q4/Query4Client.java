@@ -3,20 +3,21 @@ package hazelcast.client.q4;
 import com.hazelcast.mapreduce.JobTracker;
 import com.hazelcast.mapreduce.KeyValueSource;
 import hazelcast.client.Client;
+import hazelcast.mapreduce.Query4Collator;
 import hazelcast.mapreduce.Query4Mapper;
 import hazelcast.mapreduce.Query4Reducer;
 import hazelcast.model.Complaint;
 import hazelcast.utils.Pair;
 
-import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.text.DecimalFormat;
 import java.util.*;
 
 @SuppressWarnings("deprecation")
 public class Query4Client extends Client {
+    private static final boolean USE_COLLATOR = true;
+
     public static void main(String[] args) throws Exception {
         Query4Client client = new Query4Client();
         try {
@@ -37,46 +38,55 @@ public class Query4Client extends Client {
         JobTracker jobTracker = client.getJobTracker("query4-job-tracker");
         KeyValueSource<String, Complaint> kvSource = KeyValueSource.fromMap(complaintMap);
 
-        Map<Pair<String, String>, Set<String>> result = jobTracker.newJob(kvSource)
-                .mapper(new Query4Mapper(validTypes, city, neighbourhood))
-                .reducer(new Query4Reducer())
-                .submit()
-                .get();
+        List<Map.Entry<String, String>> finalResults;
+
+        if (USE_COLLATOR) {
+            logger.info("Using Collator for ordering and percentage calculation...");
+            finalResults = jobTracker.newJob(kvSource)
+                    .mapper(new Query4Mapper(validTypes, city, neighbourhood))
+                    .reducer(new Query4Reducer())
+                    .submit(new Query4Collator())
+                    .get();
+        } else {
+            logger.info("No Collator. Processing in client...");
+            Map<Pair<String, String>, Set<String>> result = jobTracker.newJob(kvSource)
+                    .mapper(new Query4Mapper(validTypes, city, neighbourhood))
+                    .reducer(new Query4Reducer())
+                    .submit()
+                    .get();
+
+            Map<String, Set<String>> streetTypeCounts = new HashMap<>();
+            Set<String> allTypes = new HashSet<>();
+
+            for (var entry : result.entrySet()) {
+                String street = entry.getKey().getFirst();
+                String type = entry.getKey().getSecond();
+                streetTypeCounts.computeIfAbsent(street, k -> new HashSet<>()).add(type);
+                allTypes.add(type);
+            }
+
+            int totalTypes = allTypes.size();
+            finalResults = streetTypeCounts.entrySet().stream()
+                    .map(e -> {
+                        String street = e.getKey();
+                        double percentage = (totalTypes == 0) ? 0 : (e.getValue().size() * 100.0 / totalTypes);
+                        return Map.entry(street, String.format(Locale.US, "%.2f", percentage));
+                    })
+                    .sorted(Comparator
+                            .<Map.Entry<String, String>>comparingDouble(e -> -Double.parseDouble(e.getValue()))
+                            .thenComparing(Map.Entry::getKey))
+                    .toList();
+        }
 
         long endMapReduce = System.nanoTime();
         logger.info("MapReduce job finished. Duration: {} ms", (endMapReduce - startMapReduce) / 1_000_000);
 
-        Map<String, Set<String>> streetTypeCounts = new HashMap<>();
-        Set<String> allTypes = new HashSet<>();
-
-        for (var entry : result.entrySet()) {
-            String street = entry.getKey().getFirst();
-            Set<String> types = entry.getValue();
-
-            streetTypeCounts.computeIfAbsent(street, k -> new HashSet<>()).addAll(types);
-            allTypes.addAll(types);
-        }
-
-        int totalTypes = allTypes.size();
-        DecimalFormat df = new DecimalFormat("#.00");
-        df.setRoundingMode(RoundingMode.DOWN);
-
-        List<Map.Entry<String, String>> finalResults = streetTypeCounts.entrySet().stream()
-                .map(e -> {
-                    String street = e.getKey();
-                    double percentage = (totalTypes == 0) ? 0 : (e.getValue().size() * 100.0 / totalTypes);
-                    return Map.entry(street, df.format(percentage));
-                })
-                .sorted(Comparator
-                        .<Map.Entry<String, String>>comparingDouble(e -> -Double.parseDouble(e.getValue()))
-                        .thenComparing(Map.Entry::getKey))
-                .toList();
-
         List<String> outputLines = new ArrayList<>();
         outputLines.add("street;percentage");
-        for (Map.Entry<String, String> entry : finalResults) {
+        for (var entry : finalResults) {
             outputLines.add(entry.getKey() + ";" + entry.getValue());
         }
+
         Files.write(Paths.get(outPath, "query4_" + city + ".csv"), outputLines, StandardCharsets.UTF_8);
 
         List<String> timeLog = Arrays.asList(
