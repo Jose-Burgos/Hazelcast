@@ -36,5 +36,16 @@ public class ComplaintType implements DataSerializable {
         return null;
     }
 
+    public static ComplaintType fromEntry(String line) {
+
+        String[] parts = line.split(";", -1);
+
+        ComplaintType complaintType = new ComplaintType();
+        if (parts.length == 2 || parts.length == 1) {
+            complaintType.type = parts[0].trim();
+            return complaintType;
+        }
+        throw new IllegalArgumentException("Invalid complaint type entry: " + line);
+    }
 
 }

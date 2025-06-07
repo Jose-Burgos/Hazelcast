@@ -81,6 +81,39 @@ public class Complaint implements DataSerializable {
         return complaint;
     }
 
+    public static Complaint fromEntry(String line) {
+        String[] parts = line.split(";", 0);
+        Complaint complaint = new Complaint();
+        if (parts.length == 9) {
+            complaint.setId(parts[0]);
+            complaint.setAgency(parts[2]);
+            complaint.setType(parts[3]);
+            complaint.setStatus(parts[5]);
+            complaint.setCreatedDate(parts[1]);
+            complaint.setBorough(parts[6]);
+            complaint.setLatitude(parseDoubleSafe(parts[7]));
+            complaint.setLongitude(parseDoubleSafe(parts[8]));
+            complaint.setStreet(parts[4]);
+        } else if (parts.length == 12) {
+            complaint.setId(parts[0]);
+            complaint.setAgency(parts[2]);
+            complaint.setType(parts[1]);
+            complaint.setStatus(parts[3]);
+            complaint.setCreatedDate(parts[4]);
+            complaint.setBorough(parts[9]);
+            complaint.setLatitude(parseDoubleSafe(parts[10]));
+            complaint.setLongitude(parseDoubleSafe(parts[11]));
+            complaint.setStreet(String.format("%s %s %s %s", parts[5], parts[6], parts[7], parts[8]));
+
+        } else
+
+        {
+            System.err.println("Unknown format: " + line);
+            return null;
+        }
+        return complaint;
+    }
+
     private static double parseDoubleSafe(String s) {
         try {
             return Double.parseDouble(s);

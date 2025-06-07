@@ -75,10 +75,11 @@ public class Query1Client extends Client {
 
         List<String> timeLog = Arrays.asList(
                 formatTimestamp() + " INFO [main] Started reading complaints",
-                formatTimestamp() + " INFO [main] Finished reading complaints. Duration: " + (endRead - startRead) / 1_000_000 + " ms",
+                formatTimestamp() + " INFO [main] Finished reading complaints. Duration: "
+                        + (endRead - startRead) / 1_000_000 + " ms",
                 formatTimestamp() + " INFO [main] Started MapReduce job",
-                formatTimestamp() + " INFO [main] Finished MapReduce job. Duration: " + (endMapReduce - startMapReduce) / 1_000_000 + " ms"
-        );
+                formatTimestamp() + " INFO [main] Finished MapReduce job. Duration: "
+                        + (endMapReduce - startMapReduce) / 1_000_000 + " ms");
         writeTimeLog("query1", timeLog);
 
         logger.info("Query1 completed successfully!");
