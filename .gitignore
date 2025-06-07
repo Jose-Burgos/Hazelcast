@@ -52,3 +52,10 @@ test-output/
 # Java crash logs
 hs_err_pid*
 replay_pid*
+
+# Some weird folders..
+
+**/.project
+**/.classpath
+**/.factorypath
+**/.settings

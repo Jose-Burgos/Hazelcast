@@ -22,6 +22,8 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
 
 public abstract class Client {
     protected final Logger logger = LoggerFactory.getLogger(this.getClass());
@@ -37,19 +39,23 @@ public abstract class Client {
     protected long startRead;
     protected long endRead;
 
+    private static final String GROUP_NAME = "g12";
+    private static final String GROUP_PASSWORD = "g12-pass";
+
     public void init() throws IOException, CsvValidationException {
         addresses = System.getProperty("addresses");
         city = System.getProperty("city").toUpperCase();
         inPath = System.getProperty("inPath");
         outPath = System.getProperty("outPath");
-
+        logger.info("Initializing client with parameters: addresses={}, city={}, inPath={}, outPath={}",
+                addresses, city, inPath, outPath);
         if (addresses == null || city == null || inPath == null || outPath == null) {
             throw new IllegalArgumentException("Missing parameters: -Daddresses, -Dcity, -DinPath, -DoutPath");
         }
 
         ClientConfig clientConfig = new ClientConfig();
         ClientNetworkConfig clientNetworkConfig = clientConfig.getNetworkConfig();
-        GroupConfig groupConfig = new GroupConfig("l12345", "l12345-pass");
+        GroupConfig groupConfig = new GroupConfig(GROUP_NAME, GROUP_PASSWORD);
         clientConfig.setGroupConfig(groupConfig);
         Arrays.stream(addresses.split(";")).forEach(clientNetworkConfig::addAddress);
         client = HazelcastClient.newHazelcastClient(clientConfig);
@@ -57,38 +63,27 @@ public abstract class Client {
         String typesFile = Paths.get(inPath, "serviceTypes" + city + ".csv").toString();
         String complaintsFile = Paths.get(inPath, "serviceRequests" + city + ".csv").toString();
 
-        typeMap = client.getMap("complaintTypes");
-        try (CSVReader reader = new CSVReaderBuilder(Files.newBufferedReader(Paths.get(typesFile), StandardCharsets.UTF_8))
-                .withCSVParser(new CSVParserBuilder().withSeparator(';').build())
-                .withSkipLines(1)
-                .build()) {
-            String[] parts;
-            while ((parts = reader.readNext()) != null) {
-                ComplaintType ct = ComplaintType.fromParts(parts);
-                if (ct != null) {
-                    typeMap.put(ct.getType(), ct);
-                }
-            }
+        typeMap = client.getMap("g12-complaintTypes");
+
+        try (Stream<String> lines = Files.lines(Paths.get(typesFile), StandardCharsets.UTF_8)) {
+            lines.skip(1)
+                    .map(ComplaintType::fromEntry)
+                    .forEach(ct -> typeMap.put(ct.getType(), ct));
         }
+
         validTypes = new HashSet<>(typeMap.keySet());
         logger.info("Loaded {} valid complaint types from {}", validTypes.size(), typesFile);
 
         logger.info("Starting to read complaints from: {}", complaintsFile);
         startRead = System.nanoTime();
 
-        complaintMap = client.getMap("complaints");
-        int id = 0;
-        try (CSVReader reader = new CSVReaderBuilder(Files.newBufferedReader(Paths.get(complaintsFile), StandardCharsets.UTF_8))
-                .withCSVParser(new CSVParserBuilder().withSeparator(';').build())
-                .withSkipLines(1)
-                .build()) {
-            String[] parts;
-            while ((parts = reader.readNext()) != null) {
-                Complaint complaint = Complaint.fromParts(parts);
-                if (complaint != null) {
-                    complaintMap.put(String.valueOf(id++), complaint);
-                }
-            }
+        complaintMap = client.getMap("g12-complaints");
+        AtomicInteger atomicId = new AtomicInteger(0);
+
+        try (Stream<String> lines = Files.lines(Paths.get(complaintsFile), StandardCharsets.UTF_8)) {
+            lines.skip(1)
+                    .map(Complaint::fromEntry)
+                    .forEach(complaint -> complaintMap.put(String.valueOf(atomicId.getAndIncrement()), complaint));
         }
 
         endRead = System.nanoTime();
