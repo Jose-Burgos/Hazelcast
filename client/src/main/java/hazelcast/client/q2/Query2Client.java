@@ -6,6 +6,8 @@ import hazelcast.client.Client;
 import hazelcast.mapreduce.Query2Collator;
 import hazelcast.mapreduce.Query2Mapper;
 import hazelcast.mapreduce.Query2Reducer;
+import hazelcast.mapreduce.combiner.Query2CombinerFactory;
+import hazelcast.mapreduce.reduce.Query2ReducerV2;
 import hazelcast.utils.Pair;
 import hazelcast.model.Complaint;
 
@@ -16,7 +18,7 @@ import java.util.*;
 
 @SuppressWarnings("deprecation")
 public class Query2Client extends Client {
-    private static final boolean USE_COLLATOR = true;
+    private static final boolean USE_COMBINER = true;
 
     public static void main(String[] args) throws Exception {
         Query2Client client = new Query2Client();
@@ -39,27 +41,19 @@ public class Query2Client extends Client {
 
         List<Map.Entry<Pair<String, Pair<Integer, Integer>>, String>> sorted;
 
-        if (USE_COLLATOR) {
-            logger.info("Using Collator for ordering...");
+        if (USE_COMBINER) {
+            sorted = jobTracker.newJob(kvSource)
+                    .mapper(new Query2Mapper(validTypes, q))
+                    .combiner(new Query2CombinerFactory())
+                    .reducer(new Query2ReducerV2())
+                    .submit(new Query2Collator())
+                    .get();
+        } else {
             sorted = jobTracker.newJob(kvSource)
                     .mapper(new Query2Mapper(validTypes, q))
                     .reducer(new Query2Reducer())
                     .submit(new Query2Collator())
                     .get();
-        } else {
-            logger.info("No Collator. Sorting in client...");
-            Map<Pair<String, Pair<Integer, Integer>>, String> result = jobTracker.newJob(kvSource)
-                    .mapper(new Query2Mapper(validTypes, q))
-                    .reducer(new Query2Reducer())
-                    .submit()
-                    .get();
-
-            sorted = result.entrySet().stream()
-                    .sorted(Comparator
-                            .comparing((Map.Entry<Pair<String, Pair<Integer, Integer>>, String> e) -> e.getKey().getFirst())
-                            .thenComparing(e -> e.getKey().getSecond().getFirst())
-                            .thenComparing(e -> e.getKey().getSecond().getSecond()))
-                    .toList();
         }
 
         long endMapReduce = System.nanoTime();
@@ -77,12 +71,14 @@ public class Query2Client extends Client {
 
         List<String> timeLog = Arrays.asList(
                 formatTimestamp() + " INFO [main] Started reading complaints",
-                formatTimestamp() + " INFO [main] Finished reading complaints. Duration: " + (endRead - startRead) / 1_000_000 + " ms",
+                formatTimestamp() + " INFO [main] Finished reading complaints. Duration: "
+                        + (endRead - startRead) / 1_000_000 + " ms",
                 formatTimestamp() + " INFO [main] Started MapReduce job",
-                formatTimestamp() + " INFO [main] Finished MapReduce job. Duration: " + (endMapReduce - startMapReduce) / 1_000_000 + " ms"
-        );
+                formatTimestamp() + " INFO [main] Finished MapReduce job. Duration: "
+                        + (endMapReduce - startMapReduce) / 1_000_000 + " ms");
         writeTimeLog("query2", timeLog);
 
         logger.info("Query2 completed successfully!");
+        sorted.clear();
     }
 }
