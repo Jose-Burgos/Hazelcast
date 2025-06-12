@@ -6,6 +6,7 @@ import hazelcast.client.Client;
 import hazelcast.mapreduce.Query3Collator;
 import hazelcast.mapreduce.Query3Mapper;
 import hazelcast.mapreduce.Query3Reducer;
+import hazelcast.mapreduce.combiner.Query3Combiner;
 import hazelcast.utils.Pair;
 import hazelcast.model.Complaint;
 
@@ -18,7 +19,7 @@ import java.util.*;
 
 @SuppressWarnings("deprecation")
 public class Query3Client extends Client {
-    private static final boolean USE_COLLATOR = true;
+    private static final boolean USE_COMBINER = true;
 
     public static void main(String[] args) throws Exception {
         Query3Client client = new Query3Client();
@@ -41,27 +42,20 @@ public class Query3Client extends Client {
 
         List<Map.Entry<Pair<String, Pair<Integer, Integer>>, Long>> sorted;
 
-        if (USE_COLLATOR) {
-            logger.info("Using Collator for ordering...");
+        if (USE_COMBINER) {
             sorted = jobTracker.newJob(kvSource)
                     .mapper(new Query3Mapper(validTypes, city))
                     .reducer(new Query3Reducer())
                     .submit(new Query3Collator())
                     .get();
-        } else {
-            logger.info("No Collator. Sorting in client...");
-            Map<Pair<String, Pair<Integer, Integer>>, Long> result = jobTracker.newJob(kvSource)
-                    .mapper(new Query3Mapper(validTypes, city))
-                    .reducer(new Query3Reducer())
-                    .submit()
-                    .get();
 
-            sorted = result.entrySet().stream()
-                    .sorted(Comparator
-                            .comparing((Map.Entry<Pair<String, Pair<Integer, Integer>>, Long> e) -> e.getKey().getFirst())
-                            .thenComparing(e -> e.getKey().getSecond().getFirst())
-                            .thenComparing(e -> e.getKey().getSecond().getSecond()))
-                    .toList();
+        } else {
+            sorted = jobTracker.newJob(kvSource)
+                    .mapper(new Query3Mapper(validTypes, city))
+                    .combiner(new Query3Combiner())
+                    .reducer(new Query3Reducer())
+                    .submit(new Query3Collator())
+                    .get();
         }
 
         long endMapReduce = System.nanoTime();
@@ -93,7 +87,8 @@ public class Query3Client extends Client {
                 TreeMap<Integer, Long> months = yearEntry.getValue();
 
                 TreeMap<Integer, Long> fullMonths = new TreeMap<>();
-                for (int m = 1; m <= 12; m++) fullMonths.put(m, 0L);
+                for (int m = 1; m <= 12; m++)
+                    fullMonths.put(m, 0L);
                 fullMonths.putAll(months);
 
                 List<Integer> monthList = new ArrayList<>(fullMonths.keySet());
@@ -108,7 +103,10 @@ public class Query3Client extends Client {
                     }
 
                     double avg = (double) sum / count;
-                    outputLines.add(agency + ";" + year + ";" + currentMonth + ";" + df.format(avg));
+                    String formatted = df.format(avg);
+                    if (!formatted.endsWith(".00")) {
+                        outputLines.add(agency + ";" + year + ";" + currentMonth + ";" + formatted);
+                    }
                 }
             }
         }
@@ -117,10 +115,11 @@ public class Query3Client extends Client {
 
         List<String> timeLog = Arrays.asList(
                 formatTimestamp() + " INFO [main] Started reading complaints",
-                formatTimestamp() + " INFO [main] Finished reading complaints. Duration: " + (endRead - startRead) / 1_000_000 + " ms",
+                formatTimestamp() + " INFO [main] Finished reading complaints. Duration: "
+                        + (endRead - startRead) / 1_000_000 + " ms",
                 formatTimestamp() + " INFO [main] Started MapReduce job",
-                formatTimestamp() + " INFO [main] Finished MapReduce job. Duration: " + (endMapReduce - startMapReduce) / 1_000_000 + " ms"
-        );
+                formatTimestamp() + " INFO [main] Finished MapReduce job. Duration: "
+                        + (endMapReduce - startMapReduce) / 1_000_000 + " ms");
         writeTimeLog("query3", timeLog);
 
         logger.info("Query3 completed successfully!");

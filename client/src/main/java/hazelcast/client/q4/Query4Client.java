@@ -6,6 +6,9 @@ import hazelcast.client.Client;
 import hazelcast.mapreduce.Query4Collator;
 import hazelcast.mapreduce.Query4Mapper;
 import hazelcast.mapreduce.Query4Reducer;
+import hazelcast.mapreduce.collator.Query4CollatorV2;
+import hazelcast.mapreduce.combiner.Query4Combiner;
+import hazelcast.mapreduce.reduce.Query4ReducerV2;
 import hazelcast.model.Complaint;
 import hazelcast.utils.Pair;
 
@@ -16,7 +19,7 @@ import java.util.*;
 
 @SuppressWarnings("deprecation")
 public class Query4Client extends Client {
-    private static final boolean USE_COLLATOR = true;
+    private static final boolean USE_COMBINER = true;
 
     public static void main(String[] args) throws Exception {
         Query4Client client = new Query4Client();
@@ -40,45 +43,25 @@ public class Query4Client extends Client {
 
         List<Map.Entry<String, String>> finalResults;
 
-        if (USE_COLLATOR) {
-            logger.info("Using Collator for ordering and percentage calculation...");
+        logger.info("Using Collator for ordering and percentage calculation...");
+
+        if (USE_COMBINER) {
+            finalResults = jobTracker.newJob(kvSource)
+                    .mapper(new Query4Mapper(validTypes, city, neighbourhood))
+                    .combiner(new Query4Combiner())
+                    .reducer(new Query4ReducerV2())
+                    .submit(new Query4CollatorV2())
+                    .get();
+        } else {
             finalResults = jobTracker.newJob(kvSource)
                     .mapper(new Query4Mapper(validTypes, city, neighbourhood))
                     .reducer(new Query4Reducer())
                     .submit(new Query4Collator())
                     .get();
-        } else {
-            logger.info("No Collator. Processing in client...");
-            Map<Pair<String, String>, Set<String>> result = jobTracker.newJob(kvSource)
-                    .mapper(new Query4Mapper(validTypes, city, neighbourhood))
-                    .reducer(new Query4Reducer())
-                    .submit()
-                    .get();
-
-            Map<String, Set<String>> streetTypeCounts = new HashMap<>();
-            Set<String> allTypes = new HashSet<>();
-
-            for (var entry : result.entrySet()) {
-                String street = entry.getKey().getFirst();
-                String type = entry.getKey().getSecond();
-                streetTypeCounts.computeIfAbsent(street, k -> new HashSet<>()).add(type);
-                allTypes.add(type);
-            }
-
-            int totalTypes = allTypes.size();
-            finalResults = streetTypeCounts.entrySet().stream()
-                    .map(e -> {
-                        String street = e.getKey();
-                        double percentage = (totalTypes == 0) ? 0 : (e.getValue().size() * 100.0 / totalTypes);
-                        return Map.entry(street, String.format(Locale.US, "%.2f", percentage));
-                    })
-                    .sorted(Comparator
-                            .<Map.Entry<String, String>>comparingDouble(e -> -Double.parseDouble(e.getValue()))
-                            .thenComparing(Map.Entry::getKey))
-                    .toList();
         }
+        long endMapReduce = System
+                .nanoTime();
 
-        long endMapReduce = System.nanoTime();
         logger.info("MapReduce job finished. Duration: {} ms", (endMapReduce - startMapReduce) / 1_000_000);
 
         List<String> outputLines = new ArrayList<>();
@@ -91,10 +74,12 @@ public class Query4Client extends Client {
 
         List<String> timeLog = Arrays.asList(
                 formatTimestamp() + " INFO [main] Started reading complaints",
-                formatTimestamp() + " INFO [main] Finished reading complaints. Duration: " + (endRead - startRead) / 1_000_000 + " ms",
+                formatTimestamp() + " INFO [main] Finished reading complaints. Duration: "
+                        + (endRead - startRead) / 1_000_000 + " ms",
                 formatTimestamp() + " INFO [main] Started MapReduce job",
-                formatTimestamp() + " INFO [main] Finished MapReduce job. Duration: " + (endMapReduce - startMapReduce) / 1_000_000 + " ms"
-        );
+                formatTimestamp() + " INFO [main] Finished MapReduce job. Duration: "
+                        + (endMapReduce - startMapReduce) / 1_000_000 + " ms");
+
         writeTimeLog("query4", timeLog);
 
         logger.info("Query4 completed successfully!");

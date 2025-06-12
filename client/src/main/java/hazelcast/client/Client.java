@@ -42,16 +42,16 @@ public abstract class Client {
     private static final String GROUP_NAME = "g12";
     private static final String GROUP_PASSWORD = "g12-pass";
 
-    public void init() throws IOException, CsvValidationException {
+    public void setUpClient() {
         addresses = System.getProperty("addresses");
         city = System.getProperty("city").toUpperCase();
         inPath = System.getProperty("inPath");
         outPath = System.getProperty("outPath");
-        logger.info("Initializing client with parameters: addresses={}, city={}, inPath={}, outPath={}",
-                addresses, city, inPath, outPath);
         if (addresses == null || city == null || inPath == null || outPath == null) {
             throw new IllegalArgumentException("Missing parameters: -Daddresses, -Dcity, -DinPath, -DoutPath");
         }
+        logger.info("Initializing client with parameters: addresses={}, city={}, inPath={}, outPath={}",
+                addresses, city, inPath, outPath);
 
         ClientConfig clientConfig = new ClientConfig();
         ClientNetworkConfig clientNetworkConfig = clientConfig.getNetworkConfig();
@@ -60,8 +60,10 @@ public abstract class Client {
         Arrays.stream(addresses.split(";")).forEach(clientNetworkConfig::addAddress);
         client = HazelcastClient.newHazelcastClient(clientConfig);
 
+    }
+
+    public void loadComplaintTypes() throws IOException, CsvValidationException {
         String typesFile = Paths.get(inPath, "serviceTypes" + city + ".csv").toString();
-        String complaintsFile = Paths.get(inPath, "serviceRequests" + city + ".csv").toString();
 
         typeMap = client.getMap("g12-complaintTypes");
 
@@ -74,6 +76,11 @@ public abstract class Client {
         validTypes = new HashSet<>(typeMap.keySet());
         logger.info("Loaded {} valid complaint types from {}", validTypes.size(), typesFile);
 
+    }
+
+    public void loadComplaints() throws IOException, CsvValidationException {
+
+        String complaintsFile = Paths.get(inPath, "serviceRequests" + city + ".csv").toString();
         logger.info("Starting to read complaints from: {}", complaintsFile);
         startRead = System.nanoTime();
 
@@ -88,12 +95,21 @@ public abstract class Client {
 
         endRead = System.nanoTime();
         logger.info("Finished reading complaints. Duration: {} ms", (endRead - startRead) / 1_000_000);
+
+    }
+
+    public void init() throws IOException, CsvValidationException {
+        setUpClient();
+        loadComplaintTypes();
+        loadComplaints();
     }
 
     public abstract void runQuery() throws Exception;
 
     public void shutdown() {
         if (client != null) {
+            complaintMap.clear();
+            typeMap.clear();
             HazelcastClient.shutdownAll();
         }
     }

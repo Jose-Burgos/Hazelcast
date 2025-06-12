@@ -1,12 +1,15 @@
 package hazelcast.client.q1;
 
+import com.hazelcast.mapreduce.Job;
 import com.hazelcast.mapreduce.JobTracker;
 import com.hazelcast.mapreduce.KeyValueSource;
 import hazelcast.client.Client;
 import hazelcast.mapreduce.Query1Collator;
 import hazelcast.mapreduce.Query1Mapper;
 import hazelcast.mapreduce.Query1Reducer;
+import hazelcast.mapreduce.combiner.Query1CombinerFactory;
 import hazelcast.model.Complaint;
+import hazelcast.model.ComplaintType;
 import hazelcast.utils.Pair;
 
 import java.nio.charset.StandardCharsets;
@@ -16,7 +19,7 @@ import java.util.*;
 
 @SuppressWarnings("deprecation")
 public class Query1Client extends Client {
-    private static final boolean USE_COLLATOR = true;
+    private static final boolean USER_COMBINER = true;
 
     public static void main(String[] args) throws Exception {
         Query1Client client = new Query1Client();
@@ -25,6 +28,7 @@ public class Query1Client extends Client {
             client.runQuery();
         } finally {
             client.shutdown();
+
         }
     }
 
@@ -37,28 +41,19 @@ public class Query1Client extends Client {
         KeyValueSource<String, Complaint> kvSource = KeyValueSource.fromMap(complaintMap);
 
         List<Map.Entry<Pair<String, String>, Long>> sorted;
-
-        if (USE_COLLATOR) {
-            logger.info("Using Collator for ordering...");
+        if (USER_COMBINER) {
+            sorted = jobTracker.newJob(kvSource)
+                    .mapper(new Query1Mapper(validTypes))
+                    .combiner(new Query1CombinerFactory())
+                    .reducer(new Query1Reducer())
+                    .submit(new Query1Collator())
+                    .get();
+        } else {
             sorted = jobTracker.newJob(kvSource)
                     .mapper(new Query1Mapper(validTypes))
                     .reducer(new Query1Reducer())
                     .submit(new Query1Collator())
                     .get();
-        } else {
-            logger.info("No Collator. Sorting in client...");
-            Map<Pair<String, String>, Long> result = jobTracker.newJob(kvSource)
-                    .mapper(new Query1Mapper(validTypes))
-                    .reducer(new Query1Reducer())
-                    .submit()
-                    .get();
-
-            sorted = result.entrySet().stream()
-                    .sorted(Comparator
-                            .comparingLong(Map.Entry<Pair<String, String>, Long>::getValue).reversed()
-                            .thenComparing(e -> e.getKey().getFirst())
-                            .thenComparing(e -> e.getKey().getSecond()))
-                    .toList();
         }
 
         long endMapReduce = System.nanoTime();
@@ -72,7 +67,6 @@ public class Query1Client extends Client {
                     entry.getValue());
         }
         Files.write(Paths.get(outPath, "query1_" + city + ".csv"), outputLines, StandardCharsets.UTF_8);
-
         List<String> timeLog = Arrays.asList(
                 formatTimestamp() + " INFO [main] Started reading complaints",
                 formatTimestamp() + " INFO [main] Finished reading complaints. Duration: "
@@ -83,5 +77,6 @@ public class Query1Client extends Client {
         writeTimeLog("query1", timeLog);
 
         logger.info("Query1 completed successfully!");
+        sorted.clear();
     }
 }
