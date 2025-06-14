@@ -1,4 +1,4 @@
-package hazelcast.mapreduce;
+package hazelcast.mapreduce.map;
 
 import com.hazelcast.mapreduce.Context;
 import com.hazelcast.mapreduce.Mapper;

@@ -8,6 +8,7 @@ import com.hazelcast.mapreduce.CombinerFactory;
 
 import hazelcast.utils.Pair;
 
+@SuppressWarnings("deprecation")
 public class Query2CombinerFactory
         implements CombinerFactory<Pair<String, Pair<Integer, Integer>>, String, Map<String, Long>> {
     @Override

@@ -1,5 +1,4 @@
-package hazelcast.mapreduce;
-
+package hazelcast.mapreduce.collator;
 import com.hazelcast.mapreduce.Collator;
 import hazelcast.utils.Pair;
 

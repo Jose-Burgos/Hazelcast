@@ -8,7 +8,6 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.io.IOException;
-import java.util.Arrays;
 
 @Getter
 @Setter
@@ -24,16 +23,6 @@ public class ComplaintType implements DataSerializable {
     @Override
     public void readData(ObjectDataInput in) throws IOException {
         type = in.readUTF();
-    }
-
-    public static ComplaintType fromParts(String[] parts) {
-        if (parts.length == 1 || parts.length == 2) {
-            ComplaintType ct = new ComplaintType();
-            ct.setType(parts[0]);
-            return ct;
-        }
-        System.err.println("Unknown format in ComplaintType: " + Arrays.toString(parts));
-        return null;
     }
 
     public static ComplaintType fromEntry(String line) {

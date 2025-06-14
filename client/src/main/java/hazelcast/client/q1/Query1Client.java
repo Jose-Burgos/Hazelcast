@@ -1,15 +1,13 @@
 package hazelcast.client.q1;
 
-import com.hazelcast.mapreduce.Job;
 import com.hazelcast.mapreduce.JobTracker;
 import com.hazelcast.mapreduce.KeyValueSource;
 import hazelcast.client.Client;
-import hazelcast.mapreduce.Query1Collator;
-import hazelcast.mapreduce.Query1Mapper;
-import hazelcast.mapreduce.Query1Reducer;
+import hazelcast.mapreduce.collator.Query1Collator;
+import hazelcast.mapreduce.map.Query1Mapper;
+import hazelcast.mapreduce.reduce.Query1Reducer;
 import hazelcast.mapreduce.combiner.Query1CombinerFactory;
 import hazelcast.model.Complaint;
-import hazelcast.model.ComplaintType;
 import hazelcast.utils.Pair;
 
 import java.nio.charset.StandardCharsets;

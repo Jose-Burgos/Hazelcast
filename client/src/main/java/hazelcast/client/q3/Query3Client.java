@@ -1,25 +1,26 @@
 package hazelcast.client.q3;
 
+import com.hazelcast.core.IMap;
+import com.hazelcast.core.ICompletableFuture;
 import com.hazelcast.mapreduce.JobTracker;
 import com.hazelcast.mapreduce.KeyValueSource;
 import hazelcast.client.Client;
-import hazelcast.mapreduce.Query3Collator;
-import hazelcast.mapreduce.Query3Mapper;
-import hazelcast.mapreduce.Query3Reducer;
-import hazelcast.mapreduce.combiner.Query3Combiner;
-import hazelcast.utils.Pair;
+import hazelcast.mapreduce.collator.MovingAvgCollator;
+import hazelcast.mapreduce.map.MovingAvgMapper;
+import hazelcast.mapreduce.map.Query3CountMapper;
+import hazelcast.mapreduce.reduce.MovingAvgReducerFactory;
+import hazelcast.mapreduce.reduce.Query3CountReducerFactory;
 import hazelcast.model.Complaint;
 
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.text.DecimalFormat;
-import java.math.RoundingMode;
+import java.nio.file.Files;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 @SuppressWarnings("deprecation")
 public class Query3Client extends Client {
-    private static final boolean USE_COMBINER = true;
+    private static final String QUERY_NAME = "query3";
+    private static final String INTERMEDIATE_MAP = "g12-query3-counts";
 
     public static void main(String[] args) throws Exception {
         Query3Client client = new Query3Client();
@@ -34,94 +35,41 @@ public class Query3Client extends Client {
     @Override
     public void runQuery() throws Exception {
         int w = Integer.parseInt(System.getProperty("w"));
-        long startMapReduce = System.nanoTime();
-        logger.info("Starting MapReduce job with window w = {}", w);
 
-        JobTracker jobTracker = client.getJobTracker("query3-job-tracker");
-        KeyValueSource<String, Complaint> kvSource = KeyValueSource.fromMap(complaintMap);
+        List<String> logs = new ArrayList<>();
+        logs.add(formatTimestamp() + " INFO  [Query3] Start JOB1: monthly count");
 
-        List<Map.Entry<Pair<String, Pair<Integer, Integer>>, Long>> sorted;
+        JobTracker jt = client.getJobTracker("q3-tracker");
+        KeyValueSource<String, Complaint> source1 = KeyValueSource.fromMap(complaintMap);
 
-        if (USE_COMBINER) {
-            sorted = jobTracker.newJob(kvSource)
-                    .mapper(new Query3Mapper(validTypes, city))
-                    .reducer(new Query3Reducer())
-                    .submit(new Query3Collator())
-                    .get();
+        ICompletableFuture<Map<String,Integer>> futureCounts =
+                jt.newJob(source1)
+                        .mapper(new Query3CountMapper(city))
+                        .reducer(new Query3CountReducerFactory())
+                        .submit();
 
-        } else {
-            sorted = jobTracker.newJob(kvSource)
-                    .mapper(new Query3Mapper(validTypes, city))
-                    .combiner(new Query3Combiner())
-                    .reducer(new Query3Reducer())
-                    .submit(new Query3Collator())
-                    .get();
-        }
+        Map<String,Integer> counts = futureCounts.get();
+        logs.add(formatTimestamp() + " INFO  [Query3] Finish JOB1");
 
-        long endMapReduce = System.nanoTime();
-        logger.info("MapReduce job finished. Duration: {} ms", (endMapReduce - startMapReduce) / 1_000_000);
+        IMap<String,Integer> countMap = client.getMap(INTERMEDIATE_MAP);
+        countMap.clear();
+        countMap.putAll(counts);
 
-        Map<String, Map<Integer, TreeMap<Integer, Long>>> grouped = new TreeMap<>();
-        for (var entry : sorted) {
-            String agency = entry.getKey().getFirst();
-            int year = entry.getKey().getSecond().getFirst();
-            int month = entry.getKey().getSecond().getSecond();
-            long count = entry.getValue();
+        logs.add(formatTimestamp() + " INFO  [Query3] Start JOB2: moving average w=" + w);
+        KeyValueSource<String,Integer> source2 = KeyValueSource.fromMap(countMap);
 
-            grouped
-                    .computeIfAbsent(agency, k -> new TreeMap<>())
-                    .computeIfAbsent(year, k -> new TreeMap<>())
-                    .put(month, count);
-        }
+        ICompletableFuture<List<String>> futureAvgs =
+                jt.newJob(source2)
+                        .mapper(new MovingAvgMapper())
+                        .reducer(new MovingAvgReducerFactory())
+                        .submit(new MovingAvgCollator(w));
 
-        DecimalFormat df = new DecimalFormat("#.00");
-        df.setRoundingMode(RoundingMode.HALF_UP);
+        List<String> movingAvgs = futureAvgs.get();
+        logs.add(formatTimestamp() + " INFO  [Query3] Finish JOB2");
 
-        List<String> outputLines = new ArrayList<>();
-        outputLines.add("agency;year;month;moving_avg");
+        String outCsv = Paths.get(outPath, QUERY_NAME + city + ".csv").toString();
+        Files.write(Paths.get(outCsv), movingAvgs, StandardCharsets.UTF_8);
 
-        for (var agencyEntry : grouped.entrySet()) {
-            String agency = agencyEntry.getKey();
-            for (var yearEntry : agencyEntry.getValue().entrySet()) {
-                int year = yearEntry.getKey();
-                TreeMap<Integer, Long> months = yearEntry.getValue();
-
-                TreeMap<Integer, Long> fullMonths = new TreeMap<>();
-                for (int m = 1; m <= 12; m++)
-                    fullMonths.put(m, 0L);
-                fullMonths.putAll(months);
-
-                List<Integer> monthList = new ArrayList<>(fullMonths.keySet());
-                for (int i = 0; i < monthList.size(); i++) {
-                    int currentMonth = monthList.get(i);
-                    long sum = 0;
-                    int count = 0;
-
-                    for (int j = Math.max(0, i - w + 1); j <= i; j++) {
-                        sum += fullMonths.get(monthList.get(j));
-                        count++;
-                    }
-
-                    double avg = (double) sum / count;
-                    String formatted = df.format(avg);
-                    if (!formatted.endsWith(".00")) {
-                        outputLines.add(agency + ";" + year + ";" + currentMonth + ";" + formatted);
-                    }
-                }
-            }
-        }
-
-        Files.write(Paths.get(outPath, "query3_" + city + ".csv"), outputLines, StandardCharsets.UTF_8);
-
-        List<String> timeLog = Arrays.asList(
-                formatTimestamp() + " INFO [main] Started reading complaints",
-                formatTimestamp() + " INFO [main] Finished reading complaints. Duration: "
-                        + (endRead - startRead) / 1_000_000 + " ms",
-                formatTimestamp() + " INFO [main] Started MapReduce job",
-                formatTimestamp() + " INFO [main] Finished MapReduce job. Duration: "
-                        + (endMapReduce - startMapReduce) / 1_000_000 + " ms");
-        writeTimeLog("query3", timeLog);
-
-        logger.info("Query3 completed successfully!");
+        writeTimeLog(QUERY_NAME, logs);
     }
 }

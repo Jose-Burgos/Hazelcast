@@ -13,6 +13,7 @@ import com.hazelcast.mapreduce.Collator;
 
 import hazelcast.utils.Pair;
 
+@SuppressWarnings("deprecation")
 public class Query4CollatorV2
         implements Collator<Map.Entry<Pair<String, String>, Long>, List<Map.Entry<String, String>>> {
     @Override

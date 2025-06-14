@@ -3,6 +3,7 @@ package hazelcast.mapreduce.reduce;
 import com.hazelcast.mapreduce.Reducer;
 import com.hazelcast.mapreduce.ReducerFactory;
 
+@SuppressWarnings("deprecation")
 public class Query4SecondReducer implements ReducerFactory<String, Long, Long> {
     @Override
     public Reducer<Long, Long> newReducer(String key) {

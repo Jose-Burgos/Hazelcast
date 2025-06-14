@@ -3,6 +3,7 @@ package hazelcast.mapreduce.combiner;
 import com.hazelcast.mapreduce.Combiner;
 import com.hazelcast.mapreduce.CombinerFactory;
 
+@SuppressWarnings("deprecation")
 public class Query4SecondCombiner implements CombinerFactory<String, Long, Long> {
     @Override
     public Combiner<Long, Long> newCombiner(String key) {

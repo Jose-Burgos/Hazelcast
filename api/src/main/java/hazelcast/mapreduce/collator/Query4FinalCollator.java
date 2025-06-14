@@ -9,6 +9,7 @@ import java.util.stream.StreamSupport;
 
 import com.hazelcast.mapreduce.Collator;
 
+@SuppressWarnings("deprecation")
 public class Query4FinalCollator implements Collator<Map.Entry<String, Long>, List<String>> {
     private final int totalValidTypes;
 

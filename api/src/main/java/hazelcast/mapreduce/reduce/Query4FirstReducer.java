@@ -5,6 +5,7 @@ import com.hazelcast.mapreduce.ReducerFactory;
 
 import hazelcast.utils.Pair;
 
+@SuppressWarnings("deprecation")
 public class Query4FirstReducer implements ReducerFactory<Pair<String, String>, Long, Long> {
     @Override
     public Reducer<Long, Long> newReducer(Pair<String, String> key) {

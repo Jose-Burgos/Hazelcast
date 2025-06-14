@@ -3,14 +3,13 @@ package hazelcast.client.q4;
 import com.hazelcast.mapreduce.JobTracker;
 import com.hazelcast.mapreduce.KeyValueSource;
 import hazelcast.client.Client;
-import hazelcast.mapreduce.Query4Collator;
-import hazelcast.mapreduce.Query4Mapper;
-import hazelcast.mapreduce.Query4Reducer;
+import hazelcast.mapreduce.collator.Query4Collator;
+import hazelcast.mapreduce.map.Query4Mapper;
+import hazelcast.mapreduce.reduce.Query4Reducer;
 import hazelcast.mapreduce.collator.Query4CollatorV2;
 import hazelcast.mapreduce.combiner.Query4Combiner;
 import hazelcast.mapreduce.reduce.Query4ReducerV2;
 import hazelcast.model.Complaint;
-import hazelcast.utils.Pair;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

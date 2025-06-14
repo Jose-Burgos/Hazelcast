@@ -23,6 +23,7 @@ import hazelcast.mapreduce.reduce.Query4SecondReducer;
 import hazelcast.model.Complaint;
 import hazelcast.utils.Pair;
 
+@SuppressWarnings("deprecation")
 public class Query4ClientV2 extends Client {
     private static final boolean USE_COMBINER = true;
 

@@ -1,4 +1,4 @@
-package hazelcast.mapreduce;
+package hazelcast.mapreduce.reduce;
 
 import com.hazelcast.mapreduce.Reducer;
 import com.hazelcast.mapreduce.ReducerFactory;
