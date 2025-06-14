@@ -6,6 +6,7 @@ import com.hazelcast.mapreduce.JobTracker;
 import com.hazelcast.mapreduce.KeyValueSource;
 import hazelcast.client.Client;
 import hazelcast.mapreduce.collator.MovingAvgCollator;
+import hazelcast.mapreduce.combiner.Query3CountCombinerFactory;
 import hazelcast.mapreduce.map.MovingAvgMapper;
 import hazelcast.mapreduce.map.Query3CountMapper;
 import hazelcast.mapreduce.reduce.MovingAvgReducerFactory;
@@ -21,6 +22,7 @@ import java.util.*;
 public class Query3Client extends Client {
     private static final String QUERY_NAME = "query3";
     private static final String INTERMEDIATE_MAP = "g12-query3-counts";
+    private static final boolean COMBINER = true;
 
     public static void main(String[] args) throws Exception {
         Query3Client client = new Query3Client();
@@ -42,11 +44,20 @@ public class Query3Client extends Client {
         JobTracker jt = client.getJobTracker("q3-tracker");
         KeyValueSource<String, Complaint> source1 = KeyValueSource.fromMap(complaintMap);
 
-        ICompletableFuture<Map<String,Integer>> futureCounts =
-                jt.newJob(source1)
-                        .mapper(new Query3CountMapper(city))
-                        .reducer(new Query3CountReducerFactory())
-                        .submit();
+        ICompletableFuture<Map<String, Integer>> futureCounts;
+
+        if (!COMBINER) {
+             futureCounts = jt.newJob(source1)
+                            .mapper(new Query3CountMapper(city))
+                            .reducer(new Query3CountReducerFactory())
+                            .submit();
+        } else {
+            futureCounts = jt.newJob(source1)
+                            .mapper(new Query3CountMapper(city))
+                            .combiner(new Query3CountCombinerFactory())
+                            .reducer(new Query3CountReducerFactory())
+                            .submit();
+        }
 
         Map<String,Integer> counts = futureCounts.get();
         logs.add(formatTimestamp() + " INFO  [Query3] Finish JOB1");
@@ -67,7 +78,7 @@ public class Query3Client extends Client {
         List<String> movingAvgs = futureAvgs.get();
         logs.add(formatTimestamp() + " INFO  [Query3] Finish JOB2");
 
-        String outCsv = Paths.get(outPath, QUERY_NAME + city + ".csv").toString();
+        String outCsv = Paths.get(outPath, QUERY_NAME + city + (COMBINER? "_combiner_" : "_no_combiner_")  + ".csv").toString();
         Files.write(Paths.get(outCsv), movingAvgs, StandardCharsets.UTF_8);
 
         writeTimeLog(QUERY_NAME, logs);
