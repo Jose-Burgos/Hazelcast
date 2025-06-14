@@ -15,13 +15,16 @@ import hazelcast.model.ComplaintType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
@@ -35,6 +38,9 @@ public abstract class Client {
     protected String city;
     protected String inPath;
     protected String outPath;
+    private static final int BATCH_SIZE      = 1000;
+    private static final int NUM_WORKERS     = Runtime.getRuntime().availableProcessors();
+
 
     protected long startRead;
     protected long endRead;
@@ -62,7 +68,7 @@ public abstract class Client {
 
     }
 
-    public void loadComplaintTypes() throws IOException, CsvValidationException {
+    public void loadComplaintTypes() throws IOException {
         String typesFile = Paths.get(inPath, "serviceTypes" + city + ".csv").toString();
 
         typeMap = client.getMap("g12-complaintTypes");
@@ -78,30 +84,73 @@ public abstract class Client {
 
     }
 
-    public void loadComplaints() throws IOException, CsvValidationException {
-
-        String complaintsFile = Paths.get(inPath, "serviceRequests" + city + ".csv").toString();
-        logger.info("Starting to read complaints from: {}", complaintsFile);
-        startRead = System.nanoTime();
-
+    public void loadComplaints() throws InterruptedException {
         complaintMap = client.getMap("g12-complaints");
         AtomicInteger atomicId = new AtomicInteger(0);
 
-        try (Stream<String> lines = Files.lines(Paths.get(complaintsFile), StandardCharsets.UTF_8)) {
-            lines.skip(1)
-                    .map(Complaint::fromEntry)
-                    .forEach(complaint -> complaintMap.put(String.valueOf(atomicId.getAndIncrement()), complaint));
+        startRead = System.nanoTime();
+        BlockingQueue<String> queue = new LinkedBlockingQueue<>(BATCH_SIZE * 2);
+        Path file = Paths.get(inPath, "serviceRequests" + city + ".csv");
+
+        Thread producer = new Thread(() -> {
+            try (BufferedReader br = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+                br.readLine();
+                String line;
+                while ((line = br.readLine()) != null) {
+                    queue.put(line);
+                }
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            } finally {
+                for (int i = 0; i < NUM_WORKERS; i++) {
+                    try { queue.put("__POISON_PILL__"); } catch (InterruptedException ignored) {}
+                }
+            }
+        });
+        producer.start();
+
+        ExecutorService consumers = Executors.newFixedThreadPool(NUM_WORKERS);
+        for (int i = 0; i < NUM_WORKERS; i++) {
+            consumers.submit(() -> {
+                Map<String, Complaint> batch = new HashMap<>(BATCH_SIZE);
+                try {
+                    while (true) {
+                        String line = queue.take();
+                        if ("__POISON_PILL__".equals(line)) break;
+                        Complaint c = Complaint.fromEntry(line);
+                        String id = String.valueOf(atomicId.getAndIncrement());
+                        batch.put(id, c);
+                        if (batch.size() >= BATCH_SIZE) {
+                            complaintMap.putAll(batch);
+                            batch.clear();
+                        }
+                    }
+                    if (!batch.isEmpty()) {
+                        complaintMap.putAll(batch);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            });
         }
 
+        producer.join();
+        consumers.shutdown();
+        consumers.awaitTermination(1, TimeUnit.HOURS);
         endRead = System.nanoTime();
-        logger.info("Finished reading complaints. Duration: {} ms", (endRead - startRead) / 1_000_000);
-
+        long duration = endRead - startRead/1_000_000;
+        logger.info("{} completed in {} ms", validTypes.size(), duration);
     }
 
-    public void init() throws IOException, CsvValidationException {
+
+    public void init() throws IOException {
         setUpClient();
         loadComplaintTypes();
-        loadComplaints();
+        try {
+            loadComplaints();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public abstract void runQuery() throws Exception;
