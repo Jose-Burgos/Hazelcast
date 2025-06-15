@@ -64,7 +64,7 @@ public class Query4Client extends Client {
         logger.info("MapReduce job finished. Duration: {} ms", (endMapReduce - startMapReduce) / 1_000_000);
 
         List<String> outputLines = new ArrayList<>();
-        outputLines.add("street;percentage");
+        outputLines.add("street;typePercentage");
         for (var entry : finalResults) {
             outputLines.add(entry.getKey() + ";" + entry.getValue());
         }

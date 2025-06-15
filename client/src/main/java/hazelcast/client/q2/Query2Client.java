@@ -60,7 +60,7 @@ public class Query2Client extends Client {
         logger.info("MapReduce job finished. Duration: {} ms", (endMapReduce - startMapReduce) / 1_000_000);
 
         List<String> outputLines = new ArrayList<>();
-        outputLines.add("barrio;lat_cell;lon_cell;type");
+        outputLines.add("neighbourhood;quadLat;quadLon;topType");
         for (Map.Entry<Pair<String, Pair<Integer, Integer>>, String> entry : sorted) {
             outputLines.add(entry.getKey().getFirst() + ";" +
                     entry.getKey().getSecond().getFirst() + ";" +

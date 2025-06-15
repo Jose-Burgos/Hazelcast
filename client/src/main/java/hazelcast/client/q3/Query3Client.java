@@ -78,8 +78,13 @@ public class Query3Client extends Client {
         List<String> movingAvgs = futureAvgs.get();
         logs.add(formatTimestamp() + " INFO  [Query3] Finish JOB2");
 
-        String outCsv = Paths.get(outPath, QUERY_NAME + city + (COMBINER? "_combiner_" : "_no_combiner_")  + ".csv").toString();
-        Files.write(Paths.get(outCsv), movingAvgs, StandardCharsets.UTF_8);
+        String outCsv = Paths.get(outPath, QUERY_NAME + city  + ".csv").toString();
+
+        List<String> outputLines = new ArrayList<>(movingAvgs.size() + 1);
+        outputLines.add("agency;year;month;movingAvg");
+        outputLines.addAll(movingAvgs);
+
+        Files.write(Paths.get(outCsv), outputLines, StandardCharsets.UTF_8);
 
         writeTimeLog(QUERY_NAME, logs);
     }
