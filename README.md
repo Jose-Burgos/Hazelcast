@@ -44,7 +44,9 @@ mvn clean package
 
 ## Usage
 ### Server
-Grab tpe2-g12-server-1.0-SNAPSHOT-bin.tar.gz 
+Grab tpe2-g12-server-1.0-SNAPSHOT-bin.tar.gz
+
+For a local network we use `192.168.0.*` and let Hazelcast assign the port automatically.
 ```bash
 tar xfz tpe2-g12-server-1.0-SNAPSHOT-bin.tar.gz 
 cd tpe2-g12-server-1.0-SNAPSHOT
